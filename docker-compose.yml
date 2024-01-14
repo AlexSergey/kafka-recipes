@@ -1,0 +1,116 @@
+version: "3"
+networks:
+  zookeeper-kafka:
+    driver: bridge
+
+services:
+  zookeeper:
+    platform: linux/amd64
+    image: "confluentinc/cp-zookeeper:7.0.1"
+    container_name: "zookeeper"
+    hostname: zookeeper
+    networks:
+      - zookeeper-kafka
+    ports:
+      - "2181:2181"
+    tmpfs: "/datalog"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - ./conf/zookeeper/zoo.cfg.1:/conf/zoo.cfg
+
+  kafka1:
+    platform: linux/amd64
+    image: "confluentinc/cp-kafka:7.0.1"
+    container_name: "kafka1"
+    hostname: kafka1
+    networks:
+      - zookeeper-kafka
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_CLUSTER_ID: kafka-cluster
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_HOST_NAME: localhost
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://kafka1:29092,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP:-127.0.0.1}:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    # volumes:
+      # - ./data/kafka1/data:/var/lib/kafka/data
+
+  kafka2:
+    platform: linux/amd64
+    image: "confluentinc/cp-kafka:7.0.1"
+    container_name: "kafka2"
+    hostname: kafka2
+    networks:
+      - zookeeper-kafka
+    ports:
+      - "9093:9093"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_CLUSTER_ID: kafka-cluster
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_HOST_NAME: localhost
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://kafka2:29093,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP:-127.0.0.1}:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+    # volumes:
+      # - ./data/kafka2/data:/var/lib/kafka/data
+
+  schemaregistry:
+    platform: linux/amd64
+    image: confluentinc/cp-schema-registry:6.2.4
+    container_name: "schemaregistry"
+    hostname: schemaregistry
+    networks:
+      - zookeeper-kafka
+    ports:
+      - "8085:8085"
+    depends_on:
+      - zookeeper
+      - kafka1
+      - kafka2
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka1:29092"
+      SCHEMA_REGISTRY_HOST_NAME: schemaregistry
+      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8085"
+
+  kafka-ui:
+    platform: linux/amd64
+    image: "provectuslabs/kafka-ui:latest"
+    container_name: "kafka-ui"
+    networks:
+      - zookeeper-kafka
+    ports:
+      - "8081:8080"
+    depends_on:
+      - zookeeper
+      - kafka1
+      - kafka2
+    environment:
+      KAFKA_CLUSTERS_0_ZOOKEEPER: "zookeeper:2181"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka1:29092"
+
+  kafdrop:
+    platform: linux/amd64
+    image: "obsidiandynamics/kafdrop"
+    container_name: "kafdrop"
+    networks:
+      - zookeeper-kafka
+    ports:
+      - "8082:9000"
+    environment:
+      KAFKA_BROKERCONNECT: "kafka1:29092"
+      JVM_OPTS: "-Xms16M -Xmx48M -Xss180K -XX:-TieredCompilation -XX:+UseStringDeduplication -noverify"
+    depends_on:
+      - zookeeper
+      - kafka1
+      - kafka2
